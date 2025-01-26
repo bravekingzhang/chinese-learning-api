@@ -22,8 +22,8 @@ describe('Member API', () => {
     // Create test user
     testUser = await prisma.user.create({
       data: {
-        openId: 'test_openid_member',
-        phone: '13800138003',
+        openId: 'test_openid_member_' + Date.now(),
+        phone: '13900139' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
         nickname: 'Test Member User',
         avatar: 'http://test.com/avatar.jpg'
       }
@@ -47,7 +47,13 @@ describe('Member API', () => {
   });
 
   afterAll(async () => {
-    // Cleanup test data
+    // Cleanup test data in correct order
+    await prisma.order.deleteMany({
+      where: { userId: testUser.id }
+    });
+    await prisma.member.deleteMany({
+      where: { userId: testUser.id }
+    });
     await prisma.user.delete({
       where: { id: testUser.id }
     });

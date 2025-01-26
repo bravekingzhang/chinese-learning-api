@@ -16,8 +16,8 @@ describe('Share API', () => {
     // Create test users
     testUser = await prisma.user.create({
       data: {
-        openId: 'test_openid_share_user',
-        phone: '13800138004',
+        openId: 'test_openid_share_user_' + Date.now(),
+        phone: '13900138' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
         nickname: 'Test Share User',
         avatar: 'http://test.com/avatar.jpg'
       }
@@ -25,10 +25,10 @@ describe('Share API', () => {
 
     testSharer = await prisma.user.create({
       data: {
-        openId: 'test_openid_sharer',
-        phone: '13800138005',
+        openId: 'test_openid_share_sharer_' + Date.now(),
+        phone: '13900138' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
         nickname: 'Test Sharer',
-        avatar: 'http://test.com/avatar2.jpg'
+        avatar: 'http://test.com/avatar.jpg'
       }
     });
 
@@ -47,7 +47,22 @@ describe('Share API', () => {
   });
 
   afterAll(async () => {
-    // Cleanup test data
+    // Cleanup test data in correct order
+    await prisma.shareRecord.deleteMany({
+      where: {
+        OR: [
+          { sharerId: testSharer.id },
+          { inviteeId: testUser.id }
+        ]
+      }
+    });
+    await prisma.member.deleteMany({
+      where: {
+        userId: {
+          in: [testUser.id, testSharer.id]
+        }
+      }
+    });
     await prisma.user.deleteMany({
       where: {
         id: {
@@ -72,19 +87,15 @@ describe('Share API', () => {
 
   describe('POST /api/share/invite', () => {
     afterEach(async () => {
-      // Cleanup share records and member records
+      // Cleanup share records first
       await prisma.shareRecord.deleteMany({
-        where: {
-          OR: [
-            { sharerId: testSharer.id },
-            { inviteeId: testUser.id }
-          ]
-        }
+        where: { sharerId: testSharer.id }
       });
-      await prisma.member.deleteMany({
+      // Then cleanup dummy users
+      await prisma.user.deleteMany({
         where: {
-          userId: {
-            in: [testUser.id, testSharer.id]
+          openId: {
+            startsWith: 'test_openid_dummy_'
           }
         }
       });
@@ -137,11 +148,22 @@ describe('Share API', () => {
     });
 
     it('should enforce monthly reward limit', async () => {
+      // Create dummy users first
+      const dummyUsers = await Promise.all(
+        Array(10).fill(null).map((_, i) => prisma.user.create({
+          data: {
+            openId: `test_openid_dummy_${i}`,
+            phone: `1380013${String(i).padStart(4, '0')}`,
+            nickname: `Dummy User ${i}`
+          }
+        }))
+      );
+
       // Create 10 share records for the sharer
       await prisma.shareRecord.createMany({
-        data: Array(10).fill(null).map((_, i) => ({
+        data: dummyUsers.map(user => ({
           sharerId: testSharer.id,
-          inviteeId: `dummy_user_${i}`,
+          inviteeId: user.id,
           rewardDays: 7,
           createdAt: new Date()
         }))
@@ -154,6 +176,15 @@ describe('Share API', () => {
           inviteCode: testSharer.id
         });
 
+      // Cleanup dummy users
+      await prisma.user.deleteMany({
+        where: {
+          openId: {
+            startsWith: 'test_openid_dummy_'
+          }
+        }
+      });
+
       expect(response.status).toBe(400);
       expect(response.body.code).toBe(400);
       expect(response.body.message).toBe('Sharer has reached monthly reward limit');
@@ -161,19 +192,30 @@ describe('Share API', () => {
   });
 
   describe('GET /api/share/stats', () => {
+    let dummyUsers;
+
     beforeEach(async () => {
+      // Create dummy users first
+      dummyUsers = await Promise.all([1, 2].map(i => prisma.user.create({
+        data: {
+          openId: `test_openid_stats_${i}`,
+          phone: `1380014${String(i).padStart(4, '0')}`,
+          nickname: `Stats User ${i}`
+        }
+      })));
+
       // Create some share records
       await prisma.shareRecord.createMany({
         data: [
           {
             sharerId: testSharer.id,
-            inviteeId: 'dummy_user_1',
+            inviteeId: dummyUsers[0].id,
             rewardDays: 7,
             createdAt: dayjs().subtract(1, 'month').toDate()
           },
           {
             sharerId: testSharer.id,
-            inviteeId: 'dummy_user_2',
+            inviteeId: dummyUsers[1].id,
             rewardDays: 7,
             createdAt: new Date()
           }
@@ -182,9 +224,16 @@ describe('Share API', () => {
     });
 
     afterEach(async () => {
-      // Cleanup share records
+      // Cleanup share records and dummy users
       await prisma.shareRecord.deleteMany({
         where: { sharerId: testSharer.id }
+      });
+      await prisma.user.deleteMany({
+        where: {
+          openId: {
+            startsWith: 'test_openid_stats_'
+          }
+        }
       });
     });
 

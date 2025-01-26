@@ -1,7 +1,7 @@
 // This is your Prisma schema file
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -37,7 +37,7 @@ model ExerciseRecord {
   userId     String   @map("user_id")
   baseChars  String   @map("base_chars")
   difficulty Int
-  content    Json
+  content    String
   audioUrl1  String?  @map("audio_url_1")
   audioUrl2  String?  @map("audio_url_2")
   audioUrl3  String?  @map("audio_url_3")
@@ -98,7 +98,7 @@ model Order {
   id         String    @id @default(uuid())
   userId     String    @map("user_id")
   orderNo    String    @unique @map("order_no")
-  amount     Decimal   @db.Decimal(10, 2)
+  amount     Float
   memberType Int       @map("member_type")
   days       Int
   type       Int

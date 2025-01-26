@@ -2,18 +2,37 @@ const request = require('supertest');
 const { PrismaClient } = require('@prisma/client');
 const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
+
+// Mock external services
+jest.mock('../../src/utils/kouzi', () => ({
+  generateExercise: jest.fn(),
+  generateAudio: jest.fn()
+}));
+jest.mock('../../src/utils/oss', () => ({
+  uploadToOSS: jest.fn()
+}));
+
 const { generateExercise, generateAudio } = require('../../src/utils/kouzi');
 const { uploadToOSS } = require('../../src/utils/oss');
 
 const prisma = new PrismaClient();
 
-// Mock external services
-jest.mock('../../src/utils/kouzi');
-jest.mock('../../src/utils/oss');
-
 describe('Exercise API', () => {
   let testUser;
   let token;
+
+  beforeEach(() => {
+    // Mock external service responses
+    generateExercise.mockResolvedValue({
+      level_1: ['天地', '人和'],
+      level_2: ['天地人', '和为贵'],
+      level_3: ['天地人和', '为贵自在'],
+      level_4: ['天地人和为贵', '自在逍遥游']
+    });
+
+    generateAudio.mockResolvedValue(Buffer.from('fake audio data'));
+    uploadToOSS.mockResolvedValue('http://test.com/audio.mp3');
+  });
 
   beforeAll(async () => {
     // Create test user
@@ -34,17 +53,6 @@ describe('Exercise API', () => {
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
-
-    // Mock external service responses
-    generateExercise.mockResolvedValue({
-      level_1: ['天地', '人和'],
-      level_2: ['天地人', '和为贵'],
-      level_3: ['天地人和', '为贵自在'],
-      level_4: ['天地人和为贵', '自在逍遥游']
-    });
-
-    generateAudio.mockResolvedValue(Buffer.from('fake audio data'));
-    uploadToOSS.mockResolvedValue('http://test.com/audio.mp3');
   });
 
   afterAll(async () => {
@@ -118,12 +126,12 @@ describe('Exercise API', () => {
           userId: testUser.id,
           baseChars: '天地人和为贵',
           difficulty: 1,
-          content: {
+          content: JSON.stringify({
             level_1: ['天地', '人和'],
             level_2: ['天地人', '和为贵'],
             level_3: ['天地人和', '为贵自在'],
             level_4: ['天地人和为贵', '自在逍遥游']
-          },
+          }),
           audioUrl1: 'http://test.com/audio1.mp3',
           audioUrl2: 'http://test.com/audio2.mp3',
           audioUrl3: 'http://test.com/audio3.mp3',
@@ -174,12 +182,12 @@ describe('Exercise API', () => {
           userId: testUser.id,
           baseChars: '天地人和为贵',
           difficulty: 1,
-          content: {
+          content: JSON.stringify({
             level_1: ['天地', '人和'],
             level_2: ['天地人', '和为贵'],
             level_3: ['天地人和', '为贵自在'],
             level_4: ['天地人和为贵', '自在逍遥游']
-          }
+          })
         })
       });
     });
@@ -214,12 +222,12 @@ describe('Exercise API', () => {
           userId: testUser.id,
           baseChars: '天地人和为贵',
           difficulty: 1,
-          content: {
+          content: JSON.stringify({
             level_1: ['天地', '人和'],
             level_2: ['天地人', '和为贵'],
             level_3: ['天地人和', '为贵自在'],
             level_4: ['天地人和为贵', '自在逍遥游']
-          }
+          })
         }
       });
     });
