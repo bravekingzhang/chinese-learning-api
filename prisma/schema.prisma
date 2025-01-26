@@ -1,0 +1,147 @@
+// This is your Prisma schema file
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          String    @id @default(uuid())
+  openId      String    @unique @map("open_id")
+  phone       String    @unique
+  nickname    String?
+  avatar      String?
+  points      Int       @default(0)
+  memberType  Int       @default(0) @map("member_type")
+  expireTime  DateTime? @map("expire_time")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  exerciseRecords ExerciseRecord[]
+  imageRecords    ImageRecord[]
+  pointsRecords   PointsRecord[]
+  members         Member[]
+  orders          Order[]
+  shareRecords    ShareRecord[]   @relation("Sharer")
+  invitedRecords  ShareRecord[]   @relation("Invitee")
+
+  @@map("user")
+}
+
+model ExerciseRecord {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  baseChars  String   @map("base_chars")
+  difficulty Int
+  content    Json
+  audioUrl1  String?  @map("audio_url_1")
+  audioUrl2  String?  @map("audio_url_2")
+  audioUrl3  String?  @map("audio_url_3")
+  audioUrl4  String?  @map("audio_url_4")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("exercise_record")
+}
+
+model ImageRecord {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  pointsCost Int      @map("points_cost")
+  imageUrl   String   @map("image_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("image_record")
+}
+
+model PointsRecord {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  points    Int
+  type      Int
+  remark    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("points_record")
+}
+
+model Member {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  memberType Int      @map("member_type")
+  expireTime DateTime @map("expire_time")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expireTime])
+  @@map("member")
+}
+
+model Order {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  orderNo    String    @unique @map("order_no")
+  amount     Decimal   @db.Decimal(10, 2)
+  memberType Int       @map("member_type")
+  days       Int
+  type       Int
+  status     Int       @default(0)
+  payTime    DateTime? @map("pay_time")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([orderNo])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model Card {
+  id          String    @id @default(uuid())
+  cardNo      String    @unique @map("card_no")
+  memberType  Int       @map("member_type")
+  days        Int
+  status      Int       @default(0)
+  usedUserId  String?   @map("used_user_id")
+  usedTime    DateTime? @map("used_time")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([cardNo])
+  @@index([status])
+  @@map("card")
+}
+
+model ShareRecord {
+  id         String   @id @default(uuid())
+  sharerId   String   @map("sharer_id")
+  inviteeId  String   @map("invitee_id")
+  rewardDays Int      @default(7) @map("reward_days")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  sharer  User @relation("Sharer", fields: [sharerId], references: [id])
+  invitee User @relation("Invitee", fields: [inviteeId], references: [id])
+
+  @@index([sharerId])
+  @@index([createdAt])
+  @@index([sharerId, createdAt])
+  @@map("share_record")
+}
