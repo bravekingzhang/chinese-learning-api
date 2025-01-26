@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const { generateOrderNo, createWechatPay } = require('../utils/wechat');
+const { generateOrderNo, createWechatPay, verifyPayNotification } = require('../utils/wechat');
 const dayjs = require('dayjs');
 
 const prisma = new PrismaClient();
@@ -104,16 +104,44 @@ exports.queryOrder = async (req, res) => {
 
 exports.handlePayNotify = async (req, res) => {
   try {
-    const { orderNo, transactionId } = req.body; // Simplified, actual WeChat pay notification has more fields
+    // Verify the notification signature
+    if (!verifyPayNotification(req.headers, req.body)) {
+      return res.status(400).json({
+        code: 400,
+        message: 'Invalid signature'
+      });
+    }
+
+    // Extract order number from notification
+    const { resource, event_type } = req.body;
+    
+    // Only process successful transaction notifications
+    if (event_type !== 'TRANSACTION.SUCCESS') {
+      return res.json({
+        code: 0,
+        message: 'Notification received but ignored'
+      });
+    }
+
+    // Get order number from the notification
+    const orderNo = req.body.out_trade_no;
+    const transactionId = req.body.transaction_id;
 
     const order = await prisma.order.findUnique({
       where: { orderNo }
     });
 
-    if (!order || order.status !== 0) {
+    if (!order) {
       return res.status(400).json({
         code: 400,
-        message: 'Invalid order'
+        message: 'Order not found'
+      });
+    }
+
+    if (order.status !== 0) {
+      return res.status(400).json({
+        code: 400,
+        message: 'Order already processed'
       });
     }
 
@@ -124,7 +152,8 @@ exports.handlePayNotify = async (req, res) => {
         where: { orderNo },
         data: {
           status: 1,
-          payTime: new Date()
+          payTime: new Date(),
+          transactionId
         }
       });
 
@@ -132,9 +161,10 @@ exports.handlePayNotify = async (req, res) => {
       await updateMembership(order.userId, order.memberType, order.days, prisma);
     });
 
+    // Return success response in WeChat payment notification format
     res.json({
       code: 0,
-      message: 'Success'
+      message: 'SUCCESS'
     });
   } catch (error) {
     console.error('Payment notification error:', error);

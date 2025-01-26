@@ -455,4 +455,3 @@ Response:
         remain_points: 70    // 今日还可获得积分
     }
 }
-

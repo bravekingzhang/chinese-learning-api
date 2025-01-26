@@ -2,19 +2,21 @@ const request = require('supertest');
 const { PrismaClient } = require('@prisma/client');
 const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
-const { createWechatPay } = require('../../src/utils/wechat');
+const { createWechatPay, verifyPayNotification } = require('../../src/utils/wechat');
 
 const prisma = new PrismaClient();
 
 // Mock WeChat pay
 jest.mock('../../src/utils/wechat', () => ({
   ...jest.requireActual('../../src/utils/wechat'),
-  createWechatPay: jest.fn()
+  createWechatPay: jest.fn(),
+  verifyPayNotification: jest.fn()
 }));
 
 describe('Member API', () => {
   let testUser;
   let token;
+  let testOrder;
 
   beforeAll(async () => {
     // Create test user
@@ -83,6 +85,163 @@ describe('Member API', () => {
         .send({
           type: 1,
           memberType: 99
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe(400);
+    });
+  });
+
+  describe('POST /api/member/order/notify', () => {
+    beforeEach(async () => {
+      // Create test order
+      testOrder = await prisma.order.create({
+        data: {
+          userId: testUser.id,
+          orderNo: 'TEST_ORDER_001',
+          amount: 29.9,
+          memberType: 2,
+          days: 30,
+          type: 1,
+          status: 0
+        }
+      });
+
+      // Mock signature verification
+      verifyPayNotification.mockReturnValue(true);
+    });
+
+    afterEach(async () => {
+      // Cleanup orders and membership records
+      await prisma.order.deleteMany({
+        where: { userId: testUser.id }
+      });
+      await prisma.member.deleteMany({
+        where: { userId: testUser.id }
+      });
+    });
+
+    it('should process payment notification successfully', async () => {
+      const response = await request(app)
+        .post('/api/member/order/notify')
+        .set('Wechatpay-Signature', 'mock_signature')
+        .set('Wechatpay-Timestamp', '1234567890')
+        .set('Wechatpay-Nonce', 'mock_nonce')
+        .set('Wechatpay-Serial', 'mock_serial')
+        .send({
+          resource: {
+            ciphertext: 'mock_ciphertext',
+            associated_data: 'mock_associated_data',
+            nonce: 'mock_resource_nonce'
+          },
+          summary: 'Notification test',
+          event_type: 'TRANSACTION.SUCCESS',
+          resource_type: 'encrypt-resource',
+          create_time: new Date().toISOString(),
+          id: 'mock_notification_id',
+          out_trade_no: testOrder.orderNo,
+          transaction_id: 'mock_transaction_id'
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.code).toBe(0);
+
+      // Verify order status updated
+      const updatedOrder = await prisma.order.findUnique({
+        where: { orderNo: testOrder.orderNo }
+      });
+      expect(updatedOrder.status).toBe(1);
+      expect(updatedOrder.payTime).toBeTruthy();
+
+      // Verify membership created
+      const membership = await prisma.member.findFirst({
+        where: { userId: testUser.id }
+      });
+      expect(membership).toBeTruthy();
+      expect(membership.memberType).toBe(testOrder.memberType);
+    });
+
+    it('should reject duplicate payment notification', async () => {
+      // First update order status to paid
+      await prisma.order.update({
+        where: { orderNo: testOrder.orderNo },
+        data: { status: 1, payTime: new Date() }
+      });
+
+      const response = await request(app)
+        .post('/api/member/order/notify')
+        .set('Wechatpay-Signature', 'mock_signature')
+        .set('Wechatpay-Timestamp', '1234567890')
+        .set('Wechatpay-Nonce', 'mock_nonce')
+        .set('Wechatpay-Serial', 'mock_serial')
+        .send({
+          resource: {
+            ciphertext: 'mock_ciphertext',
+            associated_data: 'mock_associated_data',
+            nonce: 'mock_resource_nonce'
+          },
+          summary: 'Notification test',
+          event_type: 'TRANSACTION.SUCCESS',
+          resource_type: 'encrypt-resource',
+          create_time: new Date().toISOString(),
+          id: 'mock_notification_id',
+          out_trade_no: testOrder.orderNo,
+          transaction_id: 'mock_transaction_id'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe(400);
+    });
+
+    it('should reject invalid order number', async () => {
+      const response = await request(app)
+        .post('/api/member/order/notify')
+        .set('Wechatpay-Signature', 'mock_signature')
+        .set('Wechatpay-Timestamp', '1234567890')
+        .set('Wechatpay-Nonce', 'mock_nonce')
+        .set('Wechatpay-Serial', 'mock_serial')
+        .send({
+          resource: {
+            ciphertext: 'mock_ciphertext',
+            associated_data: 'mock_associated_data',
+            nonce: 'mock_resource_nonce'
+          },
+          summary: 'Notification test',
+          event_type: 'TRANSACTION.SUCCESS',
+          resource_type: 'encrypt-resource',
+          create_time: new Date().toISOString(),
+          id: 'mock_notification_id',
+          out_trade_no: 'INVALID_ORDER_NO',
+          transaction_id: 'mock_transaction_id'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe(400);
+    });
+
+    it('should reject invalid signature', async () => {
+      // Mock signature verification to fail
+      verifyPayNotification.mockReturnValue(false);
+
+      const response = await request(app)
+        .post('/api/member/order/notify')
+        .set('Wechatpay-Signature', 'invalid_signature')
+        .set('Wechatpay-Timestamp', '1234567890')
+        .set('Wechatpay-Nonce', 'mock_nonce')
+        .set('Wechatpay-Serial', 'mock_serial')
+        .send({
+          resource: {
+            ciphertext: 'mock_ciphertext',
+            associated_data: 'mock_associated_data',
+            nonce: 'mock_resource_nonce'
+          },
+          summary: 'Notification test',
+          event_type: 'TRANSACTION.SUCCESS',
+          resource_type: 'encrypt-resource',
+          create_time: new Date().toISOString(),
+          id: 'mock_notification_id',
+          out_trade_no: testOrder.orderNo,
+          transaction_id: 'mock_transaction_id'
         });
 
       expect(response.status).toBe(400);
@@ -248,4 +407,4 @@ describe('Member API', () => {
       expect(response.body.code).toBe(404);
     });
   });
-}); 
+});

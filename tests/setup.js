@@ -1,6 +1,12 @@
+const path = require('path');
+const dotenv = require('dotenv');
+
 // Load test environment variables
-process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test_secret';
-process.env.JWT_EXPIRES_IN = '1h';
-process.env.WECHAT_APP_ID = 'test_app_id';
-process.env.WECHAT_APP_SECRET = 'test_app_secret'; 
+dotenv.config({ path: path.join(__dirname, '../.env.test') });
+
+// Mock OSS client
+jest.mock('../src/utils/oss', () => ({
+  uploadFile: jest.fn().mockResolvedValue('https://test-bucket.oss-cn-hangzhou.aliyuncs.com/test.jpg'),
+  getSignedUrl: jest.fn().mockResolvedValue('https://test-bucket.oss-cn-hangzhou.aliyuncs.com/test.jpg?signature'),
+  deleteFile: jest.fn().mockResolvedValue(true)
+})); 
