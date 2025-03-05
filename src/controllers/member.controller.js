@@ -17,7 +17,7 @@ exports.createOrder = async (req, res) => {
     const userId = req.user.userId;
 
     // Validate member type
-    if (!MEMBER_TYPES[memberType]) {
+    if (!MEMBER_TYPES[type]) {
       return res.status(400).json({
         code: 400,
         message: 'Invalid member type'
@@ -26,7 +26,7 @@ exports.createOrder = async (req, res) => {
 
     // Generate unique order number
     const orderNo = generateOrderNo();
-    const { days, amount } = MEMBER_TYPES[memberType];
+    const { days, amount } = MEMBER_TYPES[type];
 
     // Create order record
     const order = await prisma.order.create({
@@ -114,7 +114,7 @@ exports.handlePayNotify = async (req, res) => {
 
     // Extract order number from notification
     const { resource, event_type } = req.body;
-    
+
     // Only process successful transaction notifications
     if (event_type !== 'TRANSACTION.SUCCESS') {
       return res.json({
@@ -313,4 +313,4 @@ async function getMemberExpireTime(userId) {
     select: { expireTime: true }
   });
   return user.expireTime;
-} 
+}

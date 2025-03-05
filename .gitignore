@@ -35,3 +35,7 @@ prisma/migrations/
 # Temp files
 tmp/
 temp/
+
+src/certs/*
+
+certs/*
